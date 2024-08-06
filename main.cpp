@@ -4,6 +4,7 @@
 #include "ntp.hpp"
 
 #include <iostream>
+// #include <string>
 
 void client_tcp(void) {
 	SOCKET_TCP client("127.0.0.1", 5003);
@@ -11,21 +12,20 @@ void client_tcp(void) {
 	client.connect_to_server();
 
 }
-void client_udp(void) {
-	SOCKET_UDP client("127.0.0.1", 5003);
+void client_udp(const char *addr, int port) {
+	SOCKET_UDP client(addr, port);
 
 	char buffer[40];
 	int len = 0;
 
-	int count = 0;
-	while (1) {
-
+	int count = 8;
+	// while (1) {
 		sprintf(buffer, "%d", count++);
-		client.send(&buffer[0], sizeof(buffer));
-		client.receive(buffer, &len);
-		
-		sleep(1);
-	}
+		client.send(buffer, sizeof(buffer));
+		// client.receive(buffer, &len);
+
+		// sleep(1);
+	// }
 }
 
 void server_tcp(void) {
@@ -41,13 +41,17 @@ void server_tcp(void) {
 
 	printf("Server closed!\n");
 }
-void server_udp(void) {
-	SOCKET_UDP server(5003);
+void server_udp(int port) {
+	SOCKET_UDP server(port);
+
+	// enter in a infinite while
+	server.listen_port();
 }
 
 void client_ntp(void) {
-	
+
 }
+
 
 // DNS resolvers
 void resolv1(void) {
@@ -65,16 +69,16 @@ void resolv1(void) {
 }
 void* getSinAddr(addrinfo *addr)
 {
-    switch (addr->ai_family)
-    {
-        case AF_INET:
-            return &(reinterpret_cast<sockaddr_in*>(addr->ai_addr)->sin_addr);
+	switch (addr->ai_family)
+	{
+		case AF_INET:
+		return &(reinterpret_cast<sockaddr_in*>(addr->ai_addr)->sin_addr);
 
-        case AF_INET6:
-            return &(reinterpret_cast<sockaddr_in6*>(addr->ai_addr)->sin6_addr);
-    }
+		case AF_INET6:
+		return &(reinterpret_cast<sockaddr_in6*>(addr->ai_addr)->sin6_addr);
+	}
 
-    return NULL;
+	return NULL;
 }
 void resolv2(const char *addr) {
 	addrinfo hints = {};
@@ -103,13 +107,50 @@ void resolv2(const char *addr) {
 	}	
 }
 
-int main(void) {
+// parameters check and select
+int parameters_select(int argc, char *argv[]) {
+	std::cout << "argc: " << argc << std::endl;
 
-	char str[] = "thmalmeida.us.to";
-	resolv2(str);
+	for(int i = 0; i< argc; i++) {
+		std::cout << argv[i] << std::endl;
+	}
 
-	client_udp();
+	if(argc < 2) {
+		std::cerr << "missing input arguments" << std::endl;
+		return EXIT_FAILURE;
+	}
+
+	std::string str1;
+
+	char str_cmd[2];
+
+	strcpy(str_cmd, argv[1]);
+
+	return 0;
+}
+
+int main(int argc, char *argv[]) {
+
+	// if(parameters_select(argc, argv)) {
+	// 	return 1;
+	// }
+
+	// char str[] = "thmalmeida.us.to";
+	// resolv2(str);
+	// client_udp();
 	// client_tcp();
+
+	// Server mode
+	if(argc > 1) {
+		int port = atoi(argv[1]);
+
+		// Server side
+		server_udp(port);
+	} else {
+	// Client mode
+		client_udp("127.0.0.1", 9092);
+	}
+
 
 	return 0;
 }

@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <string.h> 
 #include <stdlib.h>
+#include <iostream>
 
 // time
 #include <time.h>
@@ -33,14 +34,9 @@
 
 
 #define DESTINATION_HOST "127.0.0.1"
-// #define PORT 5000
+// #define PORT 5000	
 #define MAXLINE 1024
 
-
-enum class socket_udp_mode {
-	server = 0,
-	client
-};
 
 void endianess_show(void) {
 	uint32_t x = 0x12345678;
@@ -49,10 +45,16 @@ void endianess_show(void) {
 }
 
 
+
+enum class socket_udp_mode {
+	server = 0,
+	client
+};
+
 class SOCKET_UDP {
 public:
 
-	// server mode
+	// server mode should select the to port to bind
 	SOCKET_UDP(uint16_t port) : port_(port) {
 		mode_ = socket_udp_mode::server;
 		init();
@@ -137,18 +139,7 @@ public:
 	int listen_port(void) {
 		printf("listening on port: %d\n", port_);
 		while(1) {
-			len_ = sizeof(client_addr_);  //len is value/result 
-
-			n_bytes_ = recvfrom(sockfd_, (char *)buffer_, MAXLINE, MSG_WAITALL, ( struct sockaddr *) &client_addr_, &len_);
-			buffer_[n_bytes_] = '\0';
-
-			if(n_bytes_) {
-				printf("%s:%d << %s\n",inet_ntoa(client_addr_.sin_addr), ntohs(client_addr_.sin_port), buffer_);
-			}
-
-			// send back
-			send_back("hey2!", 5);
-			// fflush(stdout);
+			receive(buffer_, &n_bytes_);
 		}
 
 		return 0;
@@ -179,10 +170,23 @@ public:
 		return 0;
 	}
 	int receive(char *str_rx, int *size) {
-		n_bytes_ = recvfrom(sockfd_, (char *)str_rx, MAXLINE, MSG_WAITALL, (struct sockaddr *) &server_addr_, &len_); 
-		buffer_[n_bytes_] = '\0';
-		*size = n_bytes_;
-		printf("Receive: %s\n", str_rx);
+
+		len_ = sizeof(client_addr_);  //len is value/result
+		// socket: specifies the socket file descriptor;
+		// buffer: points to the buffer where the message should be stored;
+		// length: specifies the length in bytes of the buffer pointed to by the buffer argument;
+		// flags: Specifies the type of message reception. Values of this argument are formed by logically OR'ing zero or more of the following values:
+		//		- 
+
+		*size = recvfrom(sockfd_, (char *)str_rx, MAXLINE, MSG_WAITALL, (struct sockaddr *) &server_addr_, &len_); 
+		buffer_[*size] = '\0';
+
+		if(*size >= 0) {
+			// printf("%s:%d << %s, size: %d", inet_ntoa(client_addr_.sin_addr), ntohs(client_addr_.sin_port), str_rx, *size);
+			printf("%d bytes from %s:%d << %s", *size, inet_ntoa(server_addr_.sin_addr), ntohs(server_addr_.sin_port), str_rx);
+		} else {
+			std::cout << "Timeout" << std::endl;
+		}
 
 		return 0;
 	}

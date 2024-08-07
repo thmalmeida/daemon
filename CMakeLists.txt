@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 
 # set the project name and version
-project(Daemon0 VERSION 0.1)
+# project(Daemon0 VERSION 0.1)
+project(Dameon)
 
 # specify the C++ standard
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 # configure a header file to pass some of the CMake settings
 # to the source code
@@ -17,6 +19,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # add the executable
 add_executable(Daemon0 main.cpp)
+
+find_package(Threads REQUIRED)
+target_link_libraries(Daemon0 PRIVATE Threads::Threads)
 
 # TODO 3: Use target_link_libraries to link the library to our executable
 # target_link_libraries(Tutorial PUBLIC MathFunctions)

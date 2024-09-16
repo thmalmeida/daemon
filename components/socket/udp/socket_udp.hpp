@@ -78,44 +78,44 @@ public:
 
 		// Creating socket file descriptor and verification
 		if((sockfd_ = socket(AF_INET, SOCK_DGRAM, ip_protocol_)) < 0 ) {
-			printf("socket creation failed"); 
+			std::cerr << "socket creation failed" << std::endl; 
 			return 1; 
 		} else {
-			printf("socket created!\n");
+			std::clog << "socket created!" << std::endl;
 		}
 
 		// Set timeout
-		struct timeval timeout;
-		timeout.tv_sec = 10;
-		timeout.tv_usec = 0;
-		setsockopt (sockfd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+		// struct timeval timeout;
+		// timeout.tv_sec = 60;
+		// timeout.tv_usec = 0;
+		// setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
 
 		// clear server and client addr structure
-		memset(&server_addr_, 0, sizeof(server_addr_)); 
-		memset(&client_addr_, 0, sizeof(client_addr_));
+		memset(&remote_addr_, 0, sizeof(remote_addr_)); 
+		memset(&local_addr_, 0, sizeof(local_addr_));
 
 
 		// Filling server information 
-		server_addr_.sin_family = AF_INET;				// set IPv4 
-		server_addr_.sin_port = htons(port_);			// set port to listen
+		remote_addr_.sin_family = AF_INET;				// set IPv4 
+		remote_addr_.sin_port = htons(port_);			// set port to listen
 		if(mode_ == socket_udp_mode::server) {			// Server mode
-			server_addr_.sin_addr.s_addr = INADDR_ANY;	//in_addr_t or uint32_t		
+			remote_addr_.sin_addr.s_addr = INADDR_ANY;	//in_addr_t or uint32_t		
 			printf("Server mode\n");
 		} else if (mode_ == socket_udp_mode::client) {	// Client mode
-			// server_addr_.sin_addr.s_addr = inet_addr(DESTINATION_HOST);
+			// remote_addr_.sin_addr.s_addr = inet_addr(DESTINATION_HOST);
 
 			// IPv4 string of inet_ntop() and inet_pton()
-			char server_addr_str_[INET_ADDRSTRLEN];
+			char remote_addr_str_[INET_ADDRSTRLEN];
 
 			// store this IP address in sa:
-			inet_pton(AF_INET, DESTINATION_HOST, &(server_addr_.sin_addr));
+			inet_pton(AF_INET, DESTINATION_HOST, &(remote_addr_.sin_addr));
 
 			// now get it back and print it
-			inet_ntop(AF_INET, &(server_addr_.sin_addr), server_addr_str_, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &(remote_addr_.sin_addr), remote_addr_str_, INET_ADDRSTRLEN);
 			// char *inet_ntoa(struct in_addr in);
 			// int inet_aton(const char *cp, struct in_addr *inp);
 			// in_addr_t inet_addr(const char *cp);
-			printf("Client mode destination addr: %s\n", server_addr_str_);
+			printf("Client mode destination addr: %s\n", remote_addr_str_);
 
 
 			// if(setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
@@ -128,7 +128,7 @@ public:
 
 	int bind_server(void) {
 		// Bind the socket with the server address 
-		if (bind(sockfd_, (struct sockaddr *)&server_addr_, sizeof(server_addr_)) < 0 ) {
+		if (bind(sockfd_, (struct sockaddr *)&remote_addr_, sizeof(remote_addr_)) < 0 ) {
 				printf("bind failed\n");
 				return 1;
 		} else {
@@ -145,50 +145,52 @@ public:
 		return 0;
 	}
 
-	int send(const char *str, int size) {
-		// sendto(sockfd_, (const char *)hello_1, strlen(hello_1), MSG_CONFIRM, (const struct sockaddr *) &server_addr_, sizeof(server_addr_)); 
+	int send(const void *array, int size) {
+		// sendto(sockfd_, (const char *)hello_1, strlen(hello_1), MSG_CONFIRM, (const struct sockaddr *) &remote_addr_, sizeof(remote_addr_)); 
 
-		if(sendto(sockfd_, str, size, MSG_CONFIRM, (const struct sockaddr *) &server_addr_, sizeof(server_addr_))) {
-			printf("sent: %s\n", str);
+		if(!sendto(sockfd_, array, size, MSG_CONFIRM, (const struct sockaddr *) &remote_addr_, sizeof(remote_addr_))) {
+			printf("error sent");
 		}
 
 		// send back
-		// sendto(sockfd_, (const char *)hello_2, strlen(hello_2), MSG_CONFIRM, (const struct sockaddr *) &client_addr_, len_); 
+		// sendto(sockfd_, (const char *)hello_2, strlen(hello_2), MSG_CONFIRM, (const struct sockaddr *) &local_addr_, len_); 
 		// printf("Hello message sent.\n");
 	
 		return 0;
 	}
 	int send_back(const char *str, int size) {
-		// sendto(sockfd_, (const char *)hello_1, strlen(hello_1), MSG_CONFIRM, (const struct sockaddr *) &server_addr_, sizeof(server_addr_)); 
-		sendto(sockfd_, str, size, MSG_CONFIRM, (const struct sockaddr *) &client_addr_, sizeof(client_addr_)); 
-		printf("%s:[%d] >> %s\n",inet_ntoa(client_addr_.sin_addr), ntohs(client_addr_.sin_port), str);
+		// sendto(sockfd_, (const char *)hello_1, strlen(hello_1), MSG_CONFIRM, (const struct sockaddr *) &remote_addr_, sizeof(remote_addr_)); 
+		sendto(sockfd_, str, size, MSG_CONFIRM, (const struct sockaddr *) &local_addr_, sizeof(local_addr_)); 
+		printf("%s:[%d] >> %s\n",inet_ntoa(local_addr_.sin_addr), ntohs(local_addr_.sin_port), str);
 
 		// send back
-		// sendto(sockfd_, (const char *)hello_2, strlen(hello_2), MSG_CONFIRM, (const struct sockaddr *) &client_addr_, len_); 
+		// sendto(sockfd_, (const char *)hello_2, strlen(hello_2), MSG_CONFIRM, (const struct sockaddr *) &local_addr_, len_); 
 		// printf("Hello message sent.\n");
 	
 		return 0;
 	}
 	int receive(char *str_rx, int *size) {
 
-		len_ = sizeof(client_addr_);  //len is value/result
 		// socket: specifies the socket file descriptor;
 		// buffer: points to the buffer where the message should be stored;
 		// length: specifies the length in bytes of the buffer pointed to by the buffer argument;
 		// flags: Specifies the type of message reception. Values of this argument are formed by logically OR'ing zero or more of the following values:
-		//		- 
+		//		- MSG_WAITALL
+		// address: a null pointer, or points to a sockaddr structure in which the sending address is to be stored. The length and format of the address depend on the address family of the socket.
+		// address_len: specifies the length of the sockaddr structure pointed to by the address argument.
 
-		*size = recvfrom(sockfd_, (char *)str_rx, MAXLINE, MSG_WAITALL, (struct sockaddr *) &server_addr_, &len_); 
-		buffer_[*size] = '\0';
+		len_ = sizeof(local_addr_);  //len is value/result
+		*size = recvfrom(sockfd_, (char *)str_rx, MAXLINE, 0, (struct sockaddr *) &remote_addr_, &len_); 
+		str_rx[*size] = '\0';
 
 		if(*size >= 0) {
-			// printf("%s:%d << %s, size: %d", inet_ntoa(client_addr_.sin_addr), ntohs(client_addr_.sin_port), str_rx, *size);
-			printf("%d bytes from %s:%d << %s", *size, inet_ntoa(server_addr_.sin_addr), ntohs(server_addr_.sin_port), str_rx);
+			// printf("%s:%d << %s, size: %d", inet_ntoa(local_addr_.sin_addr), ntohs(local_addr_.sin_port), str_rx, *size);
+			printf("%d bytes from %s:%d << %s", *size, inet_ntoa(remote_addr_.sin_addr), ntohs(remote_addr_.sin_port), str_rx);
+			return 0;
 		} else {
 			std::cout << "Timeout" << std::endl;
+			return 1;
 		}
-
-		return 0;
 	}
 
 	void close_port(void) {
@@ -199,7 +201,7 @@ private:
 
 	// server parameters
 	int sockfd_;									// socket descriptor
-	struct sockaddr_in server_addr_, client_addr_;	// server and client struct addr
+	struct sockaddr_in remote_addr_, local_addr_;	// server and client struct addr
 	socklen_t len_;									// packet size
 	int n_bytes_;									// answer for reception
 

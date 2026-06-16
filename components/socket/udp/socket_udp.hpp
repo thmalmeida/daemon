@@ -5,8 +5,20 @@
 // Header of UDP client-server model 
 // #include <bits/stdc++.h>
 
+// #define ESP32_UC
+
 #ifdef ESP32_UC
-#include "esp_netif.h"
+// #include <sys/param.h>
+
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/task.h"
+// #include "freertos/event_groups.h"
+
+// #include "esp_system.h"
+// #include "esp_event.h"
+// #include "esp_log.h"
+
+// #include "esp_netif.h"
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
@@ -16,35 +28,21 @@
 #else
 // Unix includes
 #include <arpa/inet.h> 
-#include <netinet/in.h>
+// #include <netinet/in.h>
 #include <sys/types.h> 
-#include <sys/socket.h> 
+#include <sys/socket.h>
 #include <unistd.h> // read(), write(), close()
+#endif
 
 // system
 #include <stdio.h>
-#include <string.h> 
-#include <stdlib.h>
-#include <iostream>
+#include <string.h>
+// #include <stdlib.h>
+// #include <iostream>
 
-// time
-#include <time.h>
-
-#endif
-
-
-#define DESTINATION_HOST "127.0.0.1"
-// #define PORT 5000	
-#define MAXLINE 1024
-
-
-void endianess_show(void) {
-	uint32_t x = 0x12345678;
-	const uint8_t* p = reinterpret_cast<const uint8_t*>(&x);
-	printf("%02X%02X%02X%02X\n", p[0], p[1], p[2], p[3]);
-}
-
-
+#define SOCKET_UDP_DEBUG
+#define LOCALHOST "127.0.0.1"
+#define MAXLINE_UDP 512
 
 enum class socket_udp_mode {
 	server = 0,
@@ -54,122 +52,177 @@ enum class socket_udp_mode {
 class SOCKET_UDP {
 public:
 
-	// server mode should select the to port to bind
+	// server mode - port and bind
 	SOCKET_UDP(uint16_t port) : port_(port) {
 		mode_ = socket_udp_mode::server;
 		init();
+		printf("Server mode selected!\n");
+		addr(LOCALHOST, port_);
 		bind_server();
 	}
 
-	// client mode
+	// client mode - addr + port
 	SOCKET_UDP(const char* server_addr, uint16_t port) : port_(port)  {
 		mode_ = socket_udp_mode::client;
+		printf("Client mode selected!\n");
+		init();
+		addr(server_addr, port_);
+	}
+	SOCKET_UDP(void) {
+		mode_ = socket_udp_mode::client;
+		printf("No mode\n");
 		init();
 	}
 
 	~SOCKET_UDP(void) {
-
+		close_port();
 	}
 
+	// Create a socket only
 	int init(void) {
-	
 		// Dummy protocol for TCP (= 0)
-		ip_protocol_ = IPPROTO_IP;
+		ip_protocol_ = IPPROTO_UDP;	// IPPROTO_IP;
+
+		// clear server and client addr structure
+		// bzero( (char*) &remote_addr_, sizeof(remote_addr_));
+		memset(&remote_addr_, 0, sizeof(remote_addr_));
+		memset(&local_addr_, 0, sizeof(local_addr_));
 
 		// Creating socket file descriptor and verification
 		if((sockfd_ = socket(AF_INET, SOCK_DGRAM, ip_protocol_)) < 0 ) {
-			std::cerr << "socket creation failed" << std::endl; 
+			#ifdef SOCKET_UDP_DEBUG
+			printf("socket creation failed\n");
+			// std::cerr << "socket creation failed" << std::endl;
+			#endif
 			return 1; 
 		} else {
-			std::clog << "socket created!" << std::endl;
+			// std::clog << "socket created!" << std::endl;
+			printf("UDP socket created!\n");
+			return 0;
 		}
-
-		// Set timeout
-		// struct timeval timeout;
-		// timeout.tv_sec = 60;
-		// timeout.tv_usec = 0;
-		// setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
-
-		// clear server and client addr structure
-		memset(&remote_addr_, 0, sizeof(remote_addr_)); 
-		memset(&local_addr_, 0, sizeof(local_addr_));
-
-
-		// Filling server information 
-		remote_addr_.sin_family = AF_INET;				// set IPv4 
-		remote_addr_.sin_port = htons(port_);			// set port to listen
-		if(mode_ == socket_udp_mode::server) {			// Server mode
-			remote_addr_.sin_addr.s_addr = INADDR_ANY;	//in_addr_t or uint32_t		
-			printf("Server mode\n");
-		} else if (mode_ == socket_udp_mode::client) {	// Client mode
-			// remote_addr_.sin_addr.s_addr = inet_addr(DESTINATION_HOST);
-
-			// IPv4 string of inet_ntop() and inet_pton()
-			char remote_addr_str_[INET_ADDRSTRLEN];
-
-			// store this IP address in sa:
-			inet_pton(AF_INET, DESTINATION_HOST, &(remote_addr_.sin_addr));
-
-			// now get it back and print it
-			inet_ntop(AF_INET, &(remote_addr_.sin_addr), remote_addr_str_, INET_ADDRSTRLEN);
-			// char *inet_ntoa(struct in_addr in);
-			// int inet_aton(const char *cp, struct in_addr *inp);
-			// in_addr_t inet_addr(const char *cp);
-			printf("Client mode destination addr: %s\n", remote_addr_str_);
-
-
-			// if(setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-			// 	printf("setcokopt error");
-			// }
-		}
-
-		return 0;
 	}
+	void port(uint16_t port) {
+		port_ = port;
 
+		if(mode_ == socket_udp_mode::server) {			// Server mode
+			local_addr_.sin_port = htons(port_);		// set port to listen
+		} else if (mode_ == socket_udp_mode::client) {	// Client mode
+			remote_addr_.sin_port = htons(port_);		// set port to listen
+		}
+	}
+	int addr(const char *addr_str) {
+		if(mode_ == socket_udp_mode::server) {			// Server mode
+			local_addr_.sin_addr.s_addr = INADDR_ANY;	//in_addr_t or uint32_t		
+			local_addr_.sin_family = AF_INET;			// set IPv4
+		} else if (mode_ == socket_udp_mode::client) {	// Client mode
+			// Filling remote/server information 
+			remote_addr_.sin_family = AF_INET;			// set IPv4
+
+			// Set ip address - way 1 (deprecated)
+			// remote_addr_.sin_addr.s_addr = inet_addr(addr_str);
+
+			// Set ip address - way 2
+			inet_pton(remote_addr_.sin_family, addr_str, &(remote_addr_.sin_addr));
+
+			// --- The next following lines is for debug purpose only. Get it back and print it ---
+			// IPv4 string of inet_ntop() and inet_pton()
+			// char remote_addr_str[INET_ADDRSTRLEN];
+			
+			// inet_ntop(remote_addr_.sin_family, &(remote_addr_.sin_addr), remote_addr_str, sizeof(remote_addr_str));
+			// char *inet_ntoa(struct in_addr in);
+
+			// printf("Client mode. Remote addr: %s:%d\n", remote_addr_str_, port_);
+
+			/*
+			use 
+			inet_ntop() — Convert Internet address format from binary to text
+			or
+			inet_pton()
+			*/
+
+
+			/* Refs.: https://www.gta.ufrj.br/ensino/eel878/sockets/inet_ntoaman.html (DEPRECATED)
+			struct sockaddr_in antelope;
+			char *some_addr;
+
+			inet_aton("10.0.0.1", &antelope.sin_addr); // store IP in antelope
+
+			some_addr = inet_ntoa(antelope.sin_addr); // return the IP
+			printf("%s\n", some_addr); // prints "10.0.0.1"
+
+			// and this call is the same as the inet_aton() call, above:
+			antelope.sin_addr.s_addr = inet_addr("10.0.0.1");
+			*/
+		}
+		return 0;		
+	}
+	int addr(const char *addr_str, uint16_t _port) {
+		port(_port);
+
+		return addr(addr_str);
+	}	
+	
+	int timeout(int t_sec) {
+		// Set timeout
+		struct timeval timeout;
+		timeout.tv_sec = t_sec;
+		timeout.tv_usec = 0;
+		if(setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+			return 1;	// return fail;
+		} else {
+			return 0;	// return success;
+		}
+	}
+	
 	int bind_server(void) {
 		// Bind the socket with the server address 
-		if (bind(sockfd_, (struct sockaddr *)&remote_addr_, sizeof(remote_addr_)) < 0 ) {
-				printf("bind failed\n");
-				return 1;
+		if (bind(sockfd_, (struct sockaddr *)&local_addr_, sizeof(local_addr_)) < 0 ) {
+			#ifdef SOCKET_UDP_DEBUG
+			printf("bind failed\n");
+			#endif
+			return 1;
 		} else {
+			#ifdef SOCKET_UDP_DEBUG
 			printf("Bind socket with server successfully!\n");
+			#endif
 			return 0;
 		}
 	}
 	int listen_port(void) {
-		printf("listening on port: %d\n", port_);
+		#ifdef SOCKET_UDP_DEBUG
+		printf("listening on port_: %d\n", port_);
+		#endif
+		char rx_str[100];
 		while(1) {
-			receive(buffer_, &n_bytes_);
+			memset(rx_str, 0, sizeof(rx_str));
+			if(receive(rx_str, &n_bytes_) == 0) {
+				printf("%ld bytes from %s:%d <<< %s", n_bytes_, inet_ntoa(remote_addr_.sin_addr), ntohs(remote_addr_.sin_port), (char *)rx_str);
+			}
+			// Try the C++ casting operator and you need two of them: one to remove the const and another one to cast to your pointer type: https://stackoverflow.com/questions/43298862/how-to-convert-const-void-to-unsigned-char
+			// strcpy(buffer_, reinterpret_cast<char*>(const_cast<void*>(ptr)));
 		}
 
 		return 0;
 	}
 
-	int send(const void *array, int size) {
+	int send(const void *b_tx, size_t size) {
 		// sendto(sockfd_, (const char *)hello_1, strlen(hello_1), MSG_CONFIRM, (const struct sockaddr *) &remote_addr_, sizeof(remote_addr_)); 
-
-		if(!sendto(sockfd_, array, size, MSG_CONFIRM, (const struct sockaddr *) &remote_addr_, sizeof(remote_addr_))) {
-			printf("error sent");
+		if(sendto(sockfd_, b_tx, size, 0, (const struct sockaddr *) &remote_addr_, sizeof(remote_addr_)) < 0) {
+			#ifdef SOCKET_UDP_DEBUG
+			printf("udp error sent\n");
+			// std::cerr << "udp error sent" << std::endl;
+			#endif
+			return 1;
+		} else {
+			// printf("sent %ld bytes to %s on port %d: %s\n", size, inet_ntoa(remote_addr_.sin_addr), ntohs(remote_addr_.sin_port), reinterpret_cast<char*>(const_cast<void*>(b_tx)));
+			return 0;
 		}
 
 		// send back
 		// sendto(sockfd_, (const char *)hello_2, strlen(hello_2), MSG_CONFIRM, (const struct sockaddr *) &local_addr_, len_); 
 		// printf("Hello message sent.\n");
-	
-		return 0;
 	}
-	int send_back(const char *str, int size) {
-		// sendto(sockfd_, (const char *)hello_1, strlen(hello_1), MSG_CONFIRM, (const struct sockaddr *) &remote_addr_, sizeof(remote_addr_)); 
-		sendto(sockfd_, str, size, MSG_CONFIRM, (const struct sockaddr *) &local_addr_, sizeof(local_addr_)); 
-		printf("%s:[%d] >> %s\n",inet_ntoa(local_addr_.sin_addr), ntohs(local_addr_.sin_port), str);
-
-		// send back
-		// sendto(sockfd_, (const char *)hello_2, strlen(hello_2), MSG_CONFIRM, (const struct sockaddr *) &local_addr_, len_); 
-		// printf("Hello message sent.\n");
-	
-		return 0;
-	}
-	int receive(char *str_rx, int *size) {
+	int receive(void *b_tx, size_t *size) {
 
 		// socket: specifies the socket file descriptor;
 		// buffer: points to the buffer where the message should be stored;
@@ -179,16 +232,23 @@ public:
 		// address: a null pointer, or points to a sockaddr structure in which the sending address is to be stored. The length and format of the address depend on the address family of the socket.
 		// address_len: specifies the length of the sockaddr structure pointed to by the address argument.
 
-		len_ = sizeof(local_addr_);  //len is value/result
-		*size = recvfrom(sockfd_, (char *)str_rx, MAXLINE, 0, (struct sockaddr *) &remote_addr_, &len_); 
-		str_rx[*size] = '\0';
+		// struct sockaddr_storage source_addr;
 
-		if(*size >= 0) {
-			// printf("%s:%d << %s, size: %d", inet_ntoa(local_addr_.sin_addr), ntohs(local_addr_.sin_port), str_rx, *size);
-			printf("%d bytes from %s:%d << %s", *size, inet_ntoa(remote_addr_.sin_addr), ntohs(remote_addr_.sin_port), str_rx);
+
+		len_ = sizeof(local_addr_);  //len is value/result
+		// *size = recvfrom(sockfd_, (char *)b_tx, MAXLINE_UDP, 0, (struct sockaddr *) &remote_addr_, &len_);
+		int len0 = recvfrom(sockfd_, b_tx, MAXLINE_UDP, 0, (struct sockaddr *) &remote_addr_, &len_);
+		// b_tx[*size] = '\0';
+		*size = len0;
+
+		if(len0 >= 0) {
+			// printf("%d bytes from %s:%d << %s", len0, inet_ntoa(remote_addr_.sin_addr), ntohs(remote_addr_.sin_port), (char *)b_tx);
 			return 0;
 		} else {
-			std::cout << "Timeout" << std::endl;
+			#ifdef SOCKET_UDP_DEBUG
+			printf("Timeout\n");
+			// std::cout << "Timeout" << std::endl;
+			#endif
 			return 1;
 		}
 	}
@@ -201,13 +261,16 @@ private:
 
 	// server parameters
 	int sockfd_;									// socket descriptor
+
 	struct sockaddr_in remote_addr_, local_addr_;	// server and client struct addr
+	// struct sockaddr_storage remote_addr_, local_addr_;
+
 	socklen_t len_;									// packet size
-	int n_bytes_;									// answer for reception
+	size_t n_bytes_;									// answer for reception
 
 	uint16_t port_;									// destination port/server bind port
-	int ip_protocol_ = 0;							// Standard well-defined IP protocols on in.h
-	char buffer_[MAXLINE];
+	int ip_protocol_;								// Standard well-defined IP protocols on in.h
+	char buffer_[MAXLINE_UDP];
 
 	socket_udp_mode mode_;							// behavior client/server
 };

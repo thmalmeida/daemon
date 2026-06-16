@@ -30,11 +30,23 @@ function buildit() {
   b0=1
 }
 
+# ./config build or ./config
 if [ "$1" = "build" ] || [ -z "$1" ]; then
+  echo -e "Build selected"
   buildit
 fi
 
+# ./config run, build project and execute
+if [ "$1" = "run" ]; then
+  echo -e "run selected "
+  buildit
+
+  ./Daemon0
+fi
+
+# ./config clean, clean the build but do not delete the build folder
 if [ "$1" = "clean" ]; then
+  echo -e "clean selected"
   if [ -d "$DBUILD" ]; then
       cd build
       echo -e "${Green}Clearing project${Reset}"
@@ -42,6 +54,7 @@ if [ "$1" = "clean" ]; then
   fi
 fi
 
+#
 if [ "$1" = "fullclean" ]; then
   if [ -d "$DBUILD" ]; then
     echo -e "${Red}Erasing project${Reset}"

@@ -1,45 +1,62 @@
-#include "socket_udp.hpp"
-#include "socket_tcp.hpp"
-
 #include "ntp.hpp"
 
-#include <iostream>
-// #include <string>
+#include "socket_udp.hpp"
+#include "socket_tcp.hpp"
+#include "net_utils.hpp"
 
-void client_tcp(void) {
-	SOCKET_TCP client("127.0.0.1", 5003);
+
+#include <iostream>
+// #include <thread>
+#include <string>
+
+void client_tcp(const char *addr, int port) {
+	SOCKET_TCP client(addr, port);
 
 	client.connect_to_server();
 
-}
-void client_udp(const char *addr, int port) {
-	SOCKET_UDP client(addr, port);
-
 	char buffer[40];
-	int len = 0;
-
-	int count = 8;
-	// while (1) {
-		sprintf(buffer, "%d", count++);
-		client.send(buffer, sizeof(buffer));
-		// client.receive(buffer, &len);
-
-		// sleep(1);
-	// }
-}
-
-void server_tcp(void) {
-	SOCKET_TCP server(5003);
 
 	while(1) {
-		server.listen_port();
+		printf("Enter something: ");
+		memset(buffer, 0, sizeof(buffer));
+		fgets(buffer, sizeof(buffer), stdin);
+		buffer[strcspn(buffer, "\n")+1] = '\0';
+		// printf("buffer length: %lu\n", strlen(buffer));
+		// std::cout << "fgets: " << buffer << std::endl;
+		client.send0(buffer, strlen(buffer));
+	}
 
+}
+void server_tcp(int port) {
+
+	SOCKET_TCP server(port);
+
+	while(1) {
 		server.wait_connection();
+		printf("A\n");
 	}
 
 	server.close_port();
 
 	printf("Server closed!\n");
+}
+
+void client_udp(const char *addr, int port) {
+	SOCKET_UDP client(addr, port);
+
+	char buffer[40];
+
+	while(1) {
+		printf("Enter something: ");
+		memset(buffer, 0, sizeof(buffer));
+		fgets(buffer, sizeof(buffer), stdin);
+		buffer[strcspn(buffer, "\n")+1] = '\0';
+		// printf("buffer length: %lu\n", strlen(buffer));
+		// std::cout << "fgets: " << buffer << std::endl;
+		client.send(buffer, strlen(buffer));
+		// client.send(buffer, sizeof(buffer));
+		// client.receive(buffer, &len);
+	}
 }
 void server_udp(int port) {
 	SOCKET_UDP server(port);
@@ -48,65 +65,38 @@ void server_udp(int port) {
 	server.listen_port();
 }
 
-void client_ntp(void) {
+void ntp_test(void) {
+	NTP ntp_client;
+	// ntp_client.server_name(NTP_SERVER, 123);
+	
+	ntp_client.server_port(123);
+	ntp_client.server_name(NTP_SERVER);
+	// ntp_client.server_addr("200.160.7.186");
+	ntp_client.timeout(2);
+	ntp_client.fetch();
 
+	// printf("Size of NTP class is: %ld\n", sizeof(ntp_client));
 }
+void endianess_test_show(void) {
+	uint32_t y, x = 0x12345678;
 
+	printf("endianess of x 0x%04x is  ", x);
+	netutils::endianess_show(x);
 
-// DNS resolvers
-void resolv1(void) {
-	hostent* myHostent = gethostbyname("google.com");
-	if (!myHostent) {
-		std::cout << "gethostbyname() failed" << "\n";
-	} else {
-		std::cout << myHostent->h_name << "\n";
-		char ip[INET6_ADDRSTRLEN];
-
-		for (unsigned int i = 0; myHostent->h_addr_list[i] != NULL; ++i) {
-			std::cout << inet_ntop(myHostent->h_addrtype, myHostent->h_addr_list[i], ip, sizeof(ip)) << "\n";
-		}
-	}
+	y = htonl(x);
+	printf("endianess of y 0x%04x is  ", y);
+	netutils::endianess_show(y);
 }
-void* getSinAddr(addrinfo *addr)
-{
-	switch (addr->ai_family)
-	{
-		case AF_INET:
-		return &(reinterpret_cast<sockaddr_in*>(addr->ai_addr)->sin_addr);
+void ext_trig(void) {
+	SOCKET_UDP client0;
 
-		case AF_INET6:
-		return &(reinterpret_cast<sockaddr_in6*>(addr->ai_addr)->sin6_addr);
-	}
+	client0.addr("127.0.0.1", 6802);
 
-	return NULL;
+	const char msg[40] = "19|on+3|1|Detected_2|text1|text2";
+
+	client0.send(msg, sizeof(msg));
+	printf("sent\n");
 }
-void resolv2(const char *addr) {
-	addrinfo hints = {};
-	hints.ai_flags = AI_CANONNAME;		// input flags
-	hints.ai_family = AF_UNSPEC;		// protocol family for socket
-	hints.ai_socktype = SOCK_STREAM;	// socket type
-	hints.ai_protocol = IPPROTO_TCP;	// protocol for socket
-
-	addrinfo *res, *addr_;
-
-	int ret = getaddrinfo(addr, NULL, &hints, &res);
-	if (ret != 0) {
-		std::cout << "getaddrinfo() failed: " << gai_strerror(ret) << "\n";
-	} else {
-		std::cout << res->ai_canonname << "\n";
-
-		addr_ = res;
-		char ip[INET6_ADDRSTRLEN];
-
-		do {
-			std::cout << inet_ntop(addr_->ai_family, getSinAddr(addr_), ip, sizeof(ip)) << std::endl;
-			addr_ = addr_->ai_next;
-		} while (addr_);
-
-		freeaddrinfo(res);
-	}	
-}
-
 // parameters check and select
 int parameters_select(int argc, char *argv[]) {
 	std::cout << "argc: " << argc << std::endl;
@@ -131,26 +121,29 @@ int parameters_select(int argc, char *argv[]) {
 
 int main(int argc, char *argv[]) {
 
-	// if(parameters_select(argc, argv)) {
-	// 	return 1;
-	// }
+	switch (argc) {
+		case 1: {
+			ntp_test();
+			// ext_trig();
+			break;
+		}
+		case 2: { // Server mode
+			// server_udp(atoi(argv[1]));
+			std::cout << "Server mode listen on port: " << "" << std::endl;
+			server_tcp(atoi(argv[1]));
+			break;
+		}
+		case 3:
+			// Client mode
+			std::cout << "Client mode\n" << std::endl;
+			// client_udp(argv[1], atoi(argv[2]));
+			client_tcp(argv[1], atoi(argv[2]));
+			break;
 
-	// char str[] = "thmalmeida.us.to";
-	// resolv2(str);
-	// client_udp();
-	// client_tcp();
-
-	// Server mode
-	if(argc > 1) {
-		int port = atoi(argv[1]);
-
-		// Server side
-		server_udp(port);
-	} else {
-	// Client mode
-		client_udp("127.0.0.1", 9092);
+		default:
+			std::cerr << "missing parameters" << std::endl;
+			break;
 	}
-
 
 	return 0;
 }

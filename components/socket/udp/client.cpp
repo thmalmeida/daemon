@@ -29,6 +29,7 @@ void client_udp(void) {
 
 
 void client_ntp(void) {
+	// SOCKET_UDP ntp("")
 	
 }
 
@@ -46,21 +47,21 @@ void resolv1(void) {
 		}
 	}
 }
-void* getSinAddr(addrinfo *addr)
-{
-    switch (addr->ai_family)
-    {
-        case AF_INET:
-            return &(reinterpret_cast<sockaddr_in*>(addr->ai_addr)->sin_addr);
+// void* getSinAddr(addrinfo *addr)
+// {
+//     switch (addr->ai_family)
+//     {
+//         case AF_INET:
+//             return &(reinterpret_cast<sockaddr_in*>(addr->ai_addr)->sin_addr);
 
-        case AF_INET6:
-            return &(reinterpret_cast<sockaddr_in6*>(addr->ai_addr)->sin6_addr);
-    }
+//         case AF_INET6:
+//             return &(reinterpret_cast<sockaddr_in6*>(addr->ai_addr)->sin6_addr);
+//     }
 
-    return NULL;
-}
+//     return NULL;
+// }
 
-void resolv2(const char *addr) {
+void nslookup2(const char *addr) {
 	addrinfo hints = {};
 	hints.ai_flags = AI_CANONNAME;		// input flags
 	hints.ai_family = AF_UNSPEC;		// protocol family for socket
@@ -79,7 +80,16 @@ void resolv2(const char *addr) {
 		char ip[INET6_ADDRSTRLEN];
 
 		do {
-			std::cout << inet_ntop(addr_->ai_family, getSinAddr(addr_), ip, sizeof(ip)) << std::endl;
+			switch (addr_->ai_family) {
+				case AF_INET:
+					std::cout << inet_ntop(addr_->ai_family, &(reinterpret_cast<sockaddr_in*>(addr_->ai_addr)->sin_addr), ip, sizeof(ip)) << std::endl;
+					break;
+				case AF_INET6:
+					std::cout << inet_ntop(addr_->ai_family, &(reinterpret_cast<sockaddr_in6*>(addr_->ai_addr)->sin6_addr), ip, sizeof(ip)) << std::endl;
+					break;
+			}	
+
+			// std::cout << inet_ntop(addr_->ai_family, getSinAddr(addr_), ip, sizeof(ip)) << std::endl;
 			addr_ = addr_->ai_next;
 		} while (addr_);
 
@@ -90,7 +100,7 @@ void resolv2(const char *addr) {
 int main(void) {
 
 	char str[] = "thmalmeida.us.to";
-	resolv2(str);
+	nslookup2(str);
 	// client_udp();
 	// client_tcp();
 

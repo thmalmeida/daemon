@@ -31,12 +31,9 @@ void server_tcp(int port) {
 
 	SOCKET_TCP server(port);
 
-	while(1) {
-		server.wait_connection();
-		printf("A\n");
-	}
+	server.run();
 
-	server.close_port();
+	server.close_all();
 
 	printf("Server closed!\n");
 }
@@ -129,7 +126,7 @@ int main(int argc, char *argv[]) {
 		}
 		case 2: { // Server mode
 			// server_udp(atoi(argv[1]));
-			std::cout << "Server mode listen on port: " << "" << std::endl;
+			// std::cout << "Server mode listen on port: " << "" << std::endl;
 			server_tcp(atoi(argv[1]));
 			break;
 		}

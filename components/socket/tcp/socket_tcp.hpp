@@ -81,88 +81,114 @@ public:
 	SOCKET_TCP(uint16_t port) : port_(port) {
 		mode_ = socket_tcp_mode::server;
 		init();
-		bind_server();
+		// bind_server();
 		listen_port();
+		wait_connection();
 	}
 
 	// client mode
-	SOCKET_TCP(const char* server_addr, uint16_t port) : port_(port)  {
+	SOCKET_TCP(const char* server_addr, uint16_t port) : server_addr_(server_addr), port_(port)  {
 		mode_ = socket_tcp_mode::client;
 		init();
 	}
 
+	// Destructor
 	~SOCKET_TCP(void) {
+		close_all();
 	}
 
-	// Create a socket only
-	int init(void) {
+	// Create a socket
+	void init(void) {
 		// Dummy protocol for TCP (= 0)
-		ip_protocol_ = IPPROTO_IP;
+		// ip_protocol_ = IPPROTO_IP;
 
 		// clear server and client addr structure
 		// bzero( (char*) &remote_addr_, sizeof(remote_addr_));
-		memset(&remote_addr_, 0, sizeof(remote_addr_));
-		memset(&local_addr_, 0, sizeof(local_addr_));
+		// memset(&remote_addr_, 0, sizeof(remote_addr_));
+		// memset(&local_addr_, 0, sizeof(local_addr_));
 
-		// memset(&hints_, 0, sizeof(hints_));
-		// hints_.ai_family = AF_UNSPEC;
-		// hints_.ai_socktype = SOCK_STREAM;
-		// hints_.ai_flags = AI_PASSIVE;		// use my IP;
+		memset(&hints_, 0, sizeof(hints_));
+		hints_.ai_family = AF_UNSPEC;						// don't care IPv4 or IPv6
+		hints_.ai_socktype = SOCK_STREAM;					// TCP stream sockets
 
-		// if((int rv = getaddrinfo(NULL, PORT, &hints_, &servinfo_)) != 0) {
-		// 	printf("getaddrinfo error\n");
-		// }
+		if (mode_ == socket_tcp_mode::server) {				// Server mode
+			hints_.ai_flags = AI_PASSIVE;					// use my IP;
+		} else if (mode_ == socket_tcp_mode::client) {		// Client mode
+			hints_.ai_flags = 0;							// no flags
+		}
 
-		// for(p_ = servinfo_; p != NULL; p = p->ai_next) {
-		// 	if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-		// 		perror("server: socket");
-		// 		continue;
-		// 	}
+		int status = 0;
+		char port_str[6]; 									// Ports have up to 5 digits, plus 1 for the null terminator
+		snprintf(port_str, sizeof(port_str), "%u", port_);	// convert uint16_t to const char;
 
-		// 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
-		// 		perror("setsockopt");
-		// 		exit(1);
-		// 	}
+		// fill servinfo_ with address and port
+		if(mode_ == socket_tcp_mode::server) {
+			if((status = getaddrinfo(NULL, port_str, &hints_, &servinfo_)) != 0) {
+				printf("getaddrinfo error on server mode\n");
+			}
+		} else if (mode_ == socket_tcp_mode::client) {
+			if((status = getaddrinfo(server_addr_, port_str, &hints_, &servinfo_)) != 0) {
+				printf("getaddrinfo error on client mode\n");
+			}
+		}
 
-		// 	if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-		// 		close(sockfd);
-		// 		perror("server: bind");
-		// 		continue;
-		// 	}
-		// 	break;
-		// }
-		// freeaddrinfo(servinfo_);
+		// loop through all the results to bind or connect to the first we can
+		for(p_ = servinfo_; p_ != NULL; p_ = p_->ai_next) {
+			// Creating socket file descriptor
+			if ((sockfd_ = socket(p_->ai_family, p_->ai_socktype, p_->ai_protocol)) == -1) {
+				perror("server: socket");
+				continue;
+			}
 
-		// Creating socket file descriptor and verification
-		if((sockfd_ = socket(AF_INET, SOCK_STREAM, ip_protocol_)) < 0) {
-			#ifdef SOCKET_TCP_DEBUG
-			printf("socket creation failed");
-			// std::cerr << "socket creation failed" << std::endl;
-			#endif
-			return 1; 
+			if(mode_ == socket_tcp_mode::server) {
+				if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
+					perror("setsockopt");
+					exit(1);
+				}
+
+				if (bind(sockfd_, p_->ai_addr, p_->ai_addrlen) == -1) {
+					close(sockfd_);
+					perror("server: bind");
+					continue;
+				}
+
+			} else if(mode_ == socket_tcp_mode::client) {
+				if (connect(sockfd_, p_->ai_addr, p_->ai_addrlen) == -1) {
+					perror("client: connect");
+					close(sockfd_);
+					continue;
+				}
+			}
+			break;
+		}
+		freeaddrinfo(servinfo_);
+		
+ 		// Verification
+		if(p_ == NULL) {
+			fprintf(stderr, "socket p* pointer fail\n");
+			exit(1);
 		} else {
-			// std::clog << "socket created!" << std::endl;
-			printf("TCP socket created!\n");
-			return 0;
+			printf("TCP server: socket created!\n");
 		}
 	}
+
 	void port(uint16_t port) {
-		if(mode_ == socket_tcp_mode::server) {			// Server mode
-			local_addr_.sin_port = htons(port_);		// set port to listen
-		} else if (mode_ == socket_tcp_mode::client) {	// Client mode
-			remote_addr_.sin_port = htons(port_);		// set port to listen
+		if(mode_ == socket_tcp_mode::server) {				// Server mode
+			local_addr_.sin_port = htons(port_);			// set port to listen
+		} else if (mode_ == socket_tcp_mode::client) {		// Client mode
+			remote_addr_.sin_port = htons(port_);			// set port to listen
 		}
 	}
 	int addr(const char *addr_str) {
-		if(mode_ == socket_tcp_mode::server) {			// Server mode
-			local_addr_.sin_addr.s_addr = htonl(INADDR_ANY);	//in_addr_t or uint32_t		
+		if(mode_ == socket_tcp_mode::server) {				// Server mode
+			local_addr_.sin_addr.s_addr = htonl(INADDR_ANY);//in_addr_t or uint32_t		
 			// local_addr_.sin_family = AF_UNSPEC;			// use IPv4 or IPv6, whichever
-			local_addr_.sin_family = AF_INET;			// IPv4
+			local_addr_.sin_family = AF_INET;				// IPv4
 			// local_addr_.ai_socktype = SOCK_STREAM;		// Uses TCP socket stream
 			// local_addr_.ai_flags = AI_PASSIVE;			// fill in my IP for me
-		} else if (mode_ == socket_tcp_mode::client) {	// Client mode
+		} else if (mode_ == socket_tcp_mode::client) {		// Client mode
 			// Filling remote/server information 
-			remote_addr_.sin_family = AF_INET;			// set IPv4
+			remote_addr_.sin_family = AF_INET;				// set IPv4
 
 			// Set ip address - way 1 (deprecated)
 			// remote_addr_.sin_addr.s_addr = inet_addr(addr_str);
@@ -238,6 +264,7 @@ public:
 	int listen_port(void) {
 		if(listen(sockfd_, BACKLOG) != 0) {
 			printf("Listen failed...\n");
+			close_all();
 			return 1;
 		} else {
 			printf("listening on port: %d\n", port_);
@@ -260,25 +287,60 @@ public:
 	}
 	// TCP server - wait accept
 	int wait_connection(void) {
-		len_ = sizeof(local_addr_);  //len is value/result
 
-		sin_size_ = sizeof(their_addr_);
+		addr_size_ = sizeof(client_addr_);
 
 		// Accept the data packet from client and verification
-		printf("TCP Server: waiting connection...\n");
-		connfd_ = accept(sockfd_, (struct sockaddr*)&their_addr_, &sin_size_);
+		printf("waiting connection...\n");
+		connfd_ = accept(sockfd_, (struct sockaddr*)&client_addr_, &addr_size_);
 
-		if(connfd_ == -1) {
+		if(connfd_ < 0) {
 			printf("TCP server accept failed...\n");
 			return 1;
 		} else {
 			printf("TCP server accept connection!\n");
-			return 0;
+			// return 0;
 		}
 
 		char s[INET6_ADDRSTRLEN];
-		inet_ntop(their_addr_.ss_family, get_in_addr((struct sockaddr *)&their_addr_), s, sizeof(s));
+		inet_ntop(client_addr_.ss_family, get_in_addr((struct sockaddr *)&client_addr_), s, sizeof(s));
 		printf("server: got connection from %s\n", s);
+
+		// if (!fork()) { // this is the child process
+		// 	close(sockfd_); // child doesn't need the listener
+		// 	if (send(connfd_, "Hello, world!", 13, 0) == -1)
+		// 		perror("send");
+		// 	close(connfd_);
+		// 	exit(0);
+		// }
+		// close(connfd_);  // parent doesn't need this
+
+		return 0;
+	}
+
+	void run(void) {
+		int numbytes = 0;
+		char buffer_rx[MAXLINE_TCP];
+		char buffer_tx[MAXLINE_TCP];
+
+		while(1) {
+			memset(buffer_rx, 0, MAXLINE_TCP);
+			memset(buffer_tx, 0, MAXLINE_TCP);
+
+			numbytes = recv(connfd_, buffer_rx, MAXLINE_TCP-1, 0);
+
+			if( numbytes <= 0) {
+				printf("Error on receive! numbytes: %d\n", numbytes);
+				break;
+			}
+			buffer_rx[numbytes] = '\0';
+			printf("%s", buffer_rx);
+			
+			// fgets(buffer_rx, MAXLINE_TCP, stdin);
+     		// send(connfd_, buffer_tx, strlen(buffer_tx), 0);
+		}
+
+		close_all();
 	}
 	// TCP client - connect to a server
 	int connect_to_server(void) {
@@ -288,12 +350,13 @@ public:
 			return 1;
 		} else {
 			printf("connected to the server..\n");
-			return 0;
+			return 0; 
 		}
 	}
 
-	void close_port(void) {
+	void close_all(void) {
 		close(sockfd_);
+		close(connfd_);
 	}
 
 	// Chat function for TCP protocol
@@ -308,9 +371,7 @@ public:
 			// read the message from client and copy it in buffer 
 			read(connfd_, buffer, sizeof(buffer));
 
-			printf("%s:%d  %s\n",inet_ntoa(local_addr_.sin_addr), ntohs(local_addr_.sin_port), buffer_);
-
-			
+			printf("%s:%d  %s\n",inet_ntoa(local_addr_.sin_addr), ntohs(local_addr_.sin_port), buffer_);			
 
 		}
 	}
@@ -321,9 +382,12 @@ private:
 	int sockfd_;									// socket descriptor, listen on sockfd and new connection on new_fd_
 	int connfd_;									// connection descriptor for TCP
 
+	const char* server_addr_;
+
 	struct addrinfo hints_, *servinfo_, *p_;
-	struct sockaddr_storage their_addr_;				// connector's address information
-	socklen_t sin_size_;
+	struct sockaddr_storage client_addr_;			// connector's address information
+	socklen_t addr_size_;
+	// socklen_t sin_size_;
 	struct sigaction sa_;
 	struct sockaddr_in remote_addr_, local_addr_;	// server and client struct addr
 
